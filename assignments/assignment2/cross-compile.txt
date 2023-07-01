@@ -1,0 +1,2 @@
+aarch64-none-linux-gnu-gcc -print-sysroot -v writer.c -o writer
+/home/coursera/arm-cross-compiler/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/bin/../aarch64-none-linux-gnu/libc
