@@ -16,8 +16,15 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    if (system(cmd) != 0)
+    {
+    	perror("System failed: ");
+    	return false;
+    }
+    else
+    {
+    	return true;
+    }
 }
 
 /**
@@ -58,10 +65,43 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+	pid_t pid;
+	int status;
+	if ( (pid = fork()) == -1)
+	{
+		perror("Failed to fork: ");
+		return false;
+	}
+	if (pid == 0)
+	{
+		if ((execv(command[0], command) == -1))
+		{	
+			perror("Failed to execv: ");
+			exit(EXIT_FAILURE);
+		}
+	}
+	else if (pid > 0)
+	{
+		wait(&status);
+		if (status != 0)
+		{
+			return false;
+		}
+		else
+		{
+			return true;
+		}
+		
+	}
+	else
+	{
+		perror("Unknown error: ");
+		return false;
+	}
 
     va_end(args);
 
-    return true;
+    return 0;
 }
 
 /**
@@ -92,6 +132,56 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+
+	pid_t pid;
+	int status;
+	int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+	if (fd < 0)
+	{
+		perror("Failed to open file: ");
+		return false;	
+	}
+	
+	if ( (pid = fork()) == -1)
+	{
+		perror("Failed to fork: ");
+		return false;
+	}
+	
+	if (pid == 0)
+	{
+		if (dup2(fd, 1) < 0)
+		{
+			perror("Failed to dup2: ");
+			return false;
+		}
+		close(fd);
+		if (execv(command[0], command) == -1)
+		{
+			perror("Failed to execv: ");
+			return false;
+		}
+	}
+	else if (pid > 0)
+	{
+		close(fd);
+		wait(&status);
+		if (status != 0)
+		{
+			return false;
+		}
+		else
+		{
+			return true;
+		}
+		
+	}
+	else
+	{	
+		close(fd);
+		perror("Unknown error: ");
+		return false;
+	}
 
     va_end(args);
 
