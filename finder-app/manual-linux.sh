@@ -48,6 +48,8 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} dtbs
 fi
 
+cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ${OUTDIR}
+
 echo "Adding the Image in outdir"
 
 echo "Creating the staging directory for the root filesystem"
@@ -129,7 +131,6 @@ sudo mknod -m 600 dev/console c 5 1
 # TODO: Clean and build the writer utility
 
 cd $SCRIPT_PATH
-make clean
 make CROSS_COMPILE=$CROSS_COMPILE writer
 
 cd $ROOTFS
