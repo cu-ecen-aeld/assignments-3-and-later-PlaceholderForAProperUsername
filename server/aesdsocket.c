@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <sys/stat.h>
 
 #define SOCKET_TARGET_PORT "9000"
 #define BACKLOG 20
@@ -28,9 +29,60 @@ static void signal_handler( int signal_number)
 {
 	if ((signal_number == SIGINT) || (signal_number == SIGTERM))
 	{
+		server_is_running = false;
+		free(msg);
 		close(sockfd);
 		close(accepted_fd);
 		remove(TMP_FILE);
+		syslog(LOG_DEBUG, "Killed aesdsocket");
+	}
+	else
+	{
+		syslog(LOG_DEBUG, "Failed to kill aesdsocket");
+	}
+}
+
+// adapted from https://stackoverflow.com/questions/17954432/creating-a-daemon-in-linux
+static void start_daemon()
+{
+	pid_t pid;
+	
+	pid = fork();
+	
+	if (pid < 0)
+	{
+		exit(EXIT_FAILURE);
+	}
+	else if (pid > 0)
+	{
+		exit(EXIT_SUCCESS);
+	}
+	
+	if (setsid() < 0)
+	{
+		exit(EXIT_FAILURE);
+	}
+	
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+	
+	pid = fork();
+	if (pid < 0)
+	{
+		exit(EXIT_FAILURE);
+	}
+	else if (pid > 0)
+	{
+		exit(EXIT_SUCCESS);
+	}
+	
+	umask(0);
+	
+	chdir("/");
+	int x;
+	for ( x = 2; x>=0; x--)
+	{
+		close(x);
 	}
 }
 
@@ -59,17 +111,15 @@ int main(int argc, char *argv[])
 	int bytes_read;
 	bool is_receiving_message = true;
 	FILE *fp;
-	struct sigaction action;
+	bool do_start_daemon = false;
+	int opt;
 	
-	memset(&action, 0, sizeof(struct sigaction));
-	action.sa_handler=signal_handler;
-	if(sigaction(SIGTERM, &action, NULL) != 0)
+	while ((opt = getopt(argc, argv, "d")) != -1)
 	{
-		perror("Failed to register SIGTERM: ");
-	}
-	if(sigaction(SIGINT, &action, NULL) != 0)
-	{
-		perror("Failed to register SIGINT: ");
+		if (opt == 'd')
+		{
+			do_start_daemon = true;
+		}
 	}
 	
 	memset(&send_conf, 0 , sizeof(send_conf));
@@ -101,6 +151,20 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 	
+	if (do_start_daemon)
+	{
+		start_daemon();
+	}
+	else
+	{
+		signal(SIGINT, signal_handler);
+		signal(SIGTERM, signal_handler);
+	}
+	
+	
+	
+	syslog(LOG_DEBUG, "aesdsocket started daemon");
+	
 	freeaddrinfo(complete_conf);
 	
 	status = listen(sockfd, BACKLOG);
@@ -110,7 +174,6 @@ int main(int argc, char *argv[])
 		perror("listen failed: ");
 		return -1;
 	}
-
 	
 	while (server_is_running)
 	{
@@ -120,8 +183,9 @@ int main(int argc, char *argv[])
 		
 		if (accepted_fd == -1)
 		{
+			syslog(LOG_DEBUG, "aesdsocket failed to accept connection");
 			perror("accept failed: ");
-			return -1;
+			continue;
 		}
 		
 		inet_ntop(received_addr.ss_family, get_in_addr((struct sockaddr *) &received_addr), received_IP, sizeof(received_IP));
@@ -136,12 +200,11 @@ int main(int argc, char *argv[])
 				if (bytes_received < 0)
 				{
 					perror("Bytes received: ");
-					return -1;
+					break;
 				}
 				else if (bytes_received == 0)
 				{
 					is_receiving_message = false;
-					printf("Abort\n");
 				}
 				else
 				{
