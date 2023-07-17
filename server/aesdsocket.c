@@ -25,7 +25,7 @@ char *msg = NULL;
 
 bool server_is_running = true;
 
-static void signal_handler( int signal_number)
+static void signal_handler(int signal_number)
 {
 	if ((signal_number == SIGINT) || (signal_number == SIGTERM))
 	{
