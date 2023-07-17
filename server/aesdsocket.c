@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #define SOCKET_TARGET_PORT "9000"
 #define BACKLOG 20
