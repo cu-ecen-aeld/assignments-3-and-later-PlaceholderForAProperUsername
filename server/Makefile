@@ -1,4 +1,4 @@
-CC?=$(CROSS_COMPILE)gcc
+cc?=$(CROSS_COMPILE)gcc
 TARGET?=aesdsocket
 CFLAGS?=-Wall -Werror -g -O0
 
@@ -8,7 +8,7 @@ default: $(TARGET)
 .PHONY: all default clean
 
 $(TARGET): $(TARGET).c
-	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).c
+	$(cc) $(CFLAGS) -o $(TARGET) $(TARGET).c
 	
 clean:
 	rm -f $(TARGET).o
