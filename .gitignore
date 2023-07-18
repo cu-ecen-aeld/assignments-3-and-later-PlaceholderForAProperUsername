@@ -1,5 +1,4 @@
 *.o
-aesdsocket
 writer
 valgrind-out.txt
 Test_*_Runner.c
