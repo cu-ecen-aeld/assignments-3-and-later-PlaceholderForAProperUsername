@@ -1,9 +1,9 @@
-cc = $(CROSS_COMPILE)gcc
+CC = $(CROSS_COMPILE)gcc
 
 all: writer
 
 writer: 
-	$(cc) writer.c -o writer
+	$(CC) writer.c -o writer
 	
 clean:
 	rm writer
