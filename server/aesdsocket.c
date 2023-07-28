@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define SOCKET_TARGET_PORT "9000"
 #define BACKLOG 20
@@ -35,6 +36,7 @@ struct LinkedList {
 
 const char* TMP_FILE = "/var/tmp/aesdsocketdata";
 int sockfd;
+pthread_mutex_t MUTEX = PTHREAD_MUTEX_INITIALIZER;
 
 bool server_is_running = true;
 
@@ -46,6 +48,30 @@ void *get_in_addr(struct sockaddr *sa);
 void *socket_thread(void *socket_param);
 void cleanup_socket(bool socket_was_terminated);
 void linked_list_add_node(struct LinkedList *node);
+void timer_10sec(int signal_number);
+
+void timer_10sec(int signal_number)
+{
+	char timestamp[200];
+	char output_timestamp[300];
+	time_t abs_time;
+	struct tm *local_time;
+	FILE *fp;
+	
+	syslog(LOG_DEBUG, "aesdsocket testing timescript");
+	strcpy(output_timestamp, "timestamp:");
+	abs_time = time(NULL);
+	local_time = localtime(&abs_time);
+	strftime(timestamp, sizeof(timestamp), "%a, %d %b %Y %T %z", local_time);
+	strcat(output_timestamp, timestamp);
+	strcat(output_timestamp, "\n");
+	pthread_mutex_lock(&MUTEX);
+	fp = fopen(TMP_FILE, "a+");
+	fwrite(output_timestamp, sizeof(char), strlen(output_timestamp), fp);
+	fclose(fp);
+	pthread_mutex_unlock(&MUTEX);
+	syslog(LOG_DEBUG, "aesdsocket ending timescript");
+}
 
 
 void linked_list_add_node(struct LinkedList *node)
@@ -75,8 +101,14 @@ void cleanup_socket(bool socket_was_terminated)
 		if (socket_was_terminated || curr_head->socket->socket_complete)
 		{
 			pthread_join(curr_head->thread_id, NULL);
-			close(curr_head->socket->accepted_fd);
-			free(curr_head->socket->msg);
+			if (0 <= curr_head->socket->accepted_fd)
+			{
+				close(curr_head->socket->accepted_fd);
+			}
+			if (NULL != curr_head->socket->msg)
+			{
+				free(curr_head->socket->msg);
+			}
 			free(curr_head->socket);
 			if (NULL == prev_head)
 			{
@@ -246,15 +278,15 @@ int main(int argc, char *argv[])
 	char received_IP[INET6_ADDRSTRLEN];
 	bool do_start_daemon = false;
 	int opt;
-	pthread_mutex_t MUTEX = PTHREAD_MUTEX_INITIALIZER;
 	
-	char timestamp[200];
-	char output_timestamp[300];
-	time_t abs_time;
-	struct tm *local_time;
-	FILE *fp;
+	struct itimerval delay;
 	
-	time_t last_time;
+	delay.it_value.tv_sec = 10;
+	delay.it_value.tv_usec = 0;
+	delay.it_interval.tv_sec = 10;
+	delay.it_interval.tv_usec = 0;
+	
+	
 	
 	while ((opt = getopt(argc, argv, "d")) != -1)
 	{
@@ -305,6 +337,9 @@ int main(int argc, char *argv[])
 	
 	syslog(LOG_DEBUG, "aesdsocket started daemon");
 	
+	signal(SIGALRM, timer_10sec);
+	setitimer(ITIMER_REAL, &delay, NULL);
+	
 	freeaddrinfo(complete_conf);
 	
 	
@@ -316,51 +351,32 @@ int main(int argc, char *argv[])
 		perror("listen failed: ");
 		return -1;
 	}
-	
-	last_time = time(NULL);
+
 	
 	syslog(LOG_DEBUG, "aesdsocket starting server");
 	
 	while (server_is_running)
 	{
-		if ((time(NULL) - last_time) >= 10)
-		{
-			syslog(LOG_DEBUG, "aesdsocket testing timescript");
-			strcpy(output_timestamp, "timestamp:");
-			abs_time = time(NULL);
-			local_time = localtime(&abs_time);
-			strftime(timestamp, sizeof(timestamp), "%a, %d %b %Y %T %z", local_time);
-			strcat(output_timestamp, timestamp);
-			strcat(output_timestamp, "\n");
-			pthread_mutex_lock(&MUTEX);
-			fp = fopen(TMP_FILE, "a+");
-			fwrite(output_timestamp, sizeof(char), strlen(output_timestamp), fp);
-			fclose(fp);
-			pthread_mutex_unlock(&MUTEX);
-			last_time = time(NULL);
-			syslog(LOG_DEBUG, "aesdsocket ending timescript");
-		}
 		
 		addr_size = sizeof(received_addr);
 		
 		syslog(LOG_DEBUG, "aesdsocket allocating structs");
 		
-		struct SocketData *socket = (struct SocketData *) malloc(sizeof(struct SocketData));
-		socket->socket_complete = false;
-		socket->mutex = &MUTEX;
-		socket->msg = NULL;
-		
-		socket->accepted_fd = accept(sockfd, (struct sockaddr *)&received_addr, &addr_size);
-		
-		syslog(LOG_DEBUG, "aesdsocket socket struct finished, starting allocating linked list");
-		
 		struct LinkedList *node = (struct LinkedList *) malloc(sizeof(struct LinkedList));
 		node->next = NULL;
-		node->socket = socket;
+		node->thread_id = 0;
+		node->socket = (struct SocketData *) malloc(sizeof(struct SocketData));
+		node->socket->socket_complete = false;
+		node->socket->mutex = &MUTEX;
+		node->socket->msg = NULL;
+		node->socket->accepted_fd = -1;
+		linked_list_add_node(node);
+		
+		node->socket->accepted_fd = accept(sockfd, (struct sockaddr *)&received_addr, &addr_size);
 		
 		syslog(LOG_DEBUG, "aesdsocket allocating structs finished");
 		
-		if (socket->accepted_fd == -1)
+		if (node->socket->accepted_fd == -1)
 		{
 			syslog(LOG_DEBUG, "aesdsocket failed to accept connection");
 			perror("accept failed: ");
@@ -372,11 +388,10 @@ int main(int argc, char *argv[])
 		
 		syslog(LOG_DEBUG, "aesdsocket adding node");
 		
-		linked_list_add_node(node);
 		
 		syslog(LOG_DEBUG, "aesdsocket adding node finished");
 		
-		pthread_create(&(node->thread_id), NULL, socket_thread, (void *) socket);
+		pthread_create(&(node->thread_id), NULL, socket_thread, (void *) node->socket);
 		
 		cleanup_socket(false);
 			
