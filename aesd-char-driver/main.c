@@ -65,7 +65,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     struct aesd_dev *dev = (struct aesd_dev *) filp->private_data;
     struct aesd_buffer_entry *p_entry;
-    size_t received_bytes_offset;
+    size_t received_bytes_offset, bytes_to_copy;
     
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
@@ -75,8 +75,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     mutex_lock_interruptible(&(dev->lock));
     p_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&(dev->buffer), *f_pos, &received_bytes_offset);
     mutex_unlock(&(dev->lock));
-    retval = p_entry->size - received_bytes_offset;
-    copy_to_user(buf, &p_entry->buffptr[received_bytes_offset], retval);
+    if (NULL == p_entry)
+    {	
+    	return 0;
+    }
+    bytes_to_copy = ((p_entry->size - received_bytes_offset) > count) ? count : (p_entry->size - received_bytes_offset);
+    retval = bytes_to_copy - copy_to_user(buf, &p_entry->buffptr[received_bytes_offset], bytes_to_copy);
     
     return retval;
 }
@@ -98,7 +102,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     {	
     	strncpy(new_buf, dev->partial_write, dev->partial_len);
     }
-    retval = copy_from_user(&new_buf[dev->partial_len], buf, count);
+    retval = count - copy_from_user(&new_buf[dev->partial_len], buf, count);
     if ('\n' == new_buf[count + dev->partial_len - 1])
     {
     	PDEBUG("writing %s", new_buf);
