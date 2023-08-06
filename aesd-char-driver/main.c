@@ -18,7 +18,9 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include <linux/slab.h>
+#include <linux/string.h>
 #include "aesdchar.h"
+#include "aesd-circular-buffer.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -174,12 +176,20 @@ int aesd_init_module(void)
 void aesd_cleanup_module(void)
 {
     dev_t devno = MKDEV(aesd_major, aesd_minor);
+    struct aesd_buffer_entry *entry;
+    uint8_t index;
 
     cdev_del(&aesd_device.cdev);
 
     /**
      * TODO: cleanup AESD specific poritions here as necessary
      */
+     
+    AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) {
+    	kfree(entry->buffptr);
+    }
+    
+    mutex_unlock(&(aesd_device.lock));
 
     unregister_chrdev_region(devno, 1);
 }
