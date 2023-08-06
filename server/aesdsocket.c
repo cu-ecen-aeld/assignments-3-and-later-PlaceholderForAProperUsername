@@ -341,8 +341,11 @@ int main(int argc, char *argv[])
 	
 	syslog(LOG_DEBUG, "aesdsocket started daemon");
 	
-	signal(SIGALRM, timer_10sec);
-	setitimer(ITIMER_REAL, &delay, NULL);
+	if (USE_AESD_CHAR_DEVICE != 1)
+	{
+		signal(SIGALRM, timer_10sec);
+		setitimer(ITIMER_REAL, &delay, NULL);
+	}
 	
 	freeaddrinfo(complete_conf);
 	
