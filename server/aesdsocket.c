@@ -20,6 +20,7 @@
 #define SOCKET_TARGET_PORT "9000"
 #define BACKLOG 20
 #define MSG_BUFFER_SIZE 1000
+#define USE_AESD_CHAR_DEVICE 1
 
 struct SocketData {
 	bool socket_complete;
@@ -34,7 +35,7 @@ struct LinkedList {
 	struct SocketData *socket;
 };
 
-const char* TMP_FILE = "/var/tmp/aesdsocketdata";
+const char* TMP_FILE = (USE_AESD_CHAR_DEVICE == 1) ? "/dev/aesdchar" : "/var/tmp/aesdsocketdata";
 int sockfd;
 pthread_mutex_t MUTEX = PTHREAD_MUTEX_INITIALIZER;
 
@@ -140,7 +141,10 @@ static void signal_handler(int signal_number)
 		server_is_running = false;
 		cleanup_socket(true);
 		close(sockfd);
-		remove(TMP_FILE);
+		if (0 == USE_AESD_CHAR_DEVICE)
+		{
+			remove(TMP_FILE);
+		}
 		syslog(LOG_DEBUG, "Killed aesdsocket");
 		exit(EXIT_SUCCESS);
 	}
