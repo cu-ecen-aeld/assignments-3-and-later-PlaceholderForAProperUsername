@@ -69,6 +69,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+    PDEBUG("read: test if correct data in buffer %s", dev->buffer.entry[0].buffptr);
     /**
      * TODO: handle read
      */
@@ -77,10 +78,15 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     mutex_unlock(&(dev->lock));
     if (NULL == p_entry)
     {	
+    	PDEBUG("read: no entry found");
     	return 0;
     }
+    PDEBUG("read: string found %s at offset %ld", &p_entry->buffptr[received_bytes_offset], received_bytes_offset);
+    PDEBUG("read: whole string %s", p_entry->buffptr);
     bytes_to_copy = ((p_entry->size - received_bytes_offset) > count) ? count : (p_entry->size - received_bytes_offset);
     retval = bytes_to_copy - copy_to_user(buf, &p_entry->buffptr[received_bytes_offset], bytes_to_copy);
+    *f_pos += retval;
+    PDEBUG("read: copied %ld bytes to user successfully", retval);
     
     return retval;
 }
@@ -102,7 +108,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     {	
     	strncpy(new_buf, dev->partial_write, dev->partial_len);
     }
+    PDEBUG("write: new_buf before appending input %s", new_buf);
     retval = count - copy_from_user(&new_buf[dev->partial_len], buf, count);
+    PDEBUG("write: new_buf after appending input %s", new_buf);
     if ('\n' == new_buf[count + dev->partial_len - 1])
     {
     	PDEBUG("writing %s", new_buf);
