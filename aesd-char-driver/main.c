@@ -33,6 +33,9 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     struct aesd_dev *dev = NULL;
     
+    struct aesd_buffer_entry *entry;
+    uint8_t index;
+    
     PDEBUG("open");
     /**
      * TODO: handle open
@@ -40,12 +43,22 @@ int aesd_open(struct inode *inode, struct file *filp)
     
     dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
     filp->private_data = dev;
+    
+    PDEBUG("open: current buffer content");
+    AESD_CIRCULAR_BUFFER_FOREACH(entry,&dev->buffer,index) {
+    	if (entry->buffptr)
+    	{
+    		PDEBUG("open: entry %s", entry->buffptr);
+    	}
+    }
     return 0;
 }
 
 int aesd_release(struct inode *inode, struct file *filp)
 {
     struct aesd_dev *dev = NULL;
+    struct aesd_buffer_entry *entry;
+    uint8_t index;
     dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
     
     PDEBUG("release");
@@ -55,6 +68,14 @@ int aesd_release(struct inode *inode, struct file *filp)
     if (mutex_is_locked(&(dev->lock)))
     {
     	mutex_unlock(&(dev->lock));
+    }
+    
+    PDEBUG("release: current buffer content");
+    AESD_CIRCULAR_BUFFER_FOREACH(entry,&dev->buffer,index) {
+    	if (entry->buffptr)
+    	{
+    		PDEBUG("release: entry %s", entry->buffptr);
+    	}
     }
     
     return 0;
@@ -70,6 +91,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     ssize_t retval = 0;
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
     PDEBUG("read: test if correct data in buffer %s", dev->buffer.entry[0].buffptr);
+    PDEBUG("read: test if correct data in device %s", aesd_device.buffer.entry[0].buffptr);
     /**
      * TODO: handle read
      */
@@ -120,16 +142,15 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     	mutex_lock_interruptible(&(dev->lock));
     	aesd_circular_buffer_add_entry(&(dev->buffer), entry);
     	mutex_unlock(&(dev->lock));
-    	kfree(new_buf);
     	kfree(dev->partial_write);
+    	dev->partial_write = NULL;
     	dev->partial_len = 0;
     }
     else
     {
     	kfree(dev->partial_write);	    
 	dev->partial_write = new_buf;
-	kfree(new_buf);
-	dev->partial_len += count;
+	dev->partial_len += retval;
     }
 
     return retval;
@@ -174,6 +195,9 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
+    aesd_circular_buffer_init(&aesd_device.buffer);
+    aesd_device.partial_write = NULL;
+    aesd_device.partial_len = 0;
     mutex_init(&(aesd_device.lock));
 
     result = aesd_setup_cdev(&aesd_device);
@@ -198,10 +222,12 @@ void aesd_cleanup_module(void)
      */
      
     AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) {
-    	kfree(entry->buffptr);
+    	if (entry->buffptr)
+    	{
+    		kfree(entry->buffptr);
+    	}
     }
     
-    mutex_unlock(&(aesd_device.lock));
 
     unregister_chrdev_region(devno, 1);
 }
