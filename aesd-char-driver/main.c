@@ -21,6 +21,8 @@
 #include <linux/string.h>
 #include "aesdchar.h"
 #include "aesd-circular-buffer.h"
+#include "aesd_ioctl.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
@@ -155,12 +157,83 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     return retval;
 }
+
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct aesd_dev *dev = (struct aesd_dev *) filp->private_data;
+	long retval = 0;
+	loff_t newpos;
+	mutex_lock_interruptible(&(dev->lock));
+	int curr_buffer_out_position = dev->buffer.out_offs;
+	int idx;
+	if (AESDCHAR_IOCSEEKTO == cmd)
+	{
+		struct aesd_seekto seekto;
+		if (copy_from_user(&seekto, (const void __user *) arg, sizeof(seekto)) != 0)
+		{
+			retval = -EFAULT;
+		}
+		else
+		{
+			if (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED <= seekto.write_cmd)
+			{	
+				PDEBUG("aesd_ioctl: cmd %d out of range, must be between 0 and 9 ", seekto.write_cmd);
+				retval = -EINVAL;
+			}
+			else if (NULL == dev->buffer.entry[(curr_buffer_out_position + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].buffptr)
+			{	
+				PDEBUG("aesd_ioctl: buffer at cmd %d empty", seekto.write_cmd);
+				retval = -EINVAL;
+			}
+			else if (dev->buffer.entry[(curr_buffer_out_position + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size > seekto.write_cmd_offset)
+			{
+				PDEBUG("aesd_ioctl: offset out of range");
+				retval = -EINVAL;
+			}
+			else
+			{	
+				for (idx = 0; idx < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; idx++)
+				{
+					if (((idx + curr_buffer_out_position) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) == seekto.write_cmd)
+					{
+						newpos += seekto.write_cmd_offset;
+					}
+					else
+					{
+						newpos += dev->buffer.entry[(curr_buffer_out_position + idx) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
+					}
+				}
+				filp->f_pos = newpos;
+			}
+		}
+	}
+	mutex_unlock(&(dev->lock));
+	return retval;
+}
+
+loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
+{
+	struct aesd_buffer_entry *entry;
+    	uint8_t index;
+	loff_t size = 0;
+	AESD_CIRCULAR_BUFFER_FOREACH(entry,&aesd_device.buffer,index) 
+	{
+	    	if (entry->buffptr)
+	    	{
+	    		size += entry->size;
+	    	}
+	}
+	return fixed_size_llseek(filp, offset, whence, size);
+}
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek = 	aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
