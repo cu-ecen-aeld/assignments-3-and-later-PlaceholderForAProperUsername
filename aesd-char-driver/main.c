@@ -163,11 +163,12 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct aesd_dev *dev = (struct aesd_dev *) filp->private_data;
 	long retval = 0;
-	loff_t newpos;
+	loff_t newpos = 0;
 	mutex_lock_interruptible(&(dev->lock));
 	int curr_buffer_out_position = dev->buffer.out_offs;
 	int idx;
 	PDEBUG("aesd_ioctl: entering ioctl with cmd %u", cmd);
+	PDEBUG("aesd_ioctl: current buffer position %d", curr_buffer_out_position);
 	if (AESDCHAR_IOCSEEKTO == cmd)
 	{
 		PDEBUG("aesd_ioctl: cmd recognized");
@@ -180,7 +181,7 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		else
 		{
 			PDEBUG("aesd_ioctl: recognized offsets %u and %u", seekto.write_cmd, seekto.write_cmd_offset);
-			if (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED >= seekto.write_cmd)
+			if (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED <= seekto.write_cmd)
 			{	
 				PDEBUG("aesd_ioctl: cmd %d out of range, must be between 0 and 9 ", seekto.write_cmd);
 				retval = -EINVAL;
@@ -190,7 +191,7 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				PDEBUG("aesd_ioctl: buffer at cmd %d empty", seekto.write_cmd);
 				retval = -EINVAL;
 			}
-			else if (dev->buffer.entry[(curr_buffer_out_position + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size > seekto.write_cmd_offset)
+			else if (dev->buffer.entry[(curr_buffer_out_position + seekto.write_cmd) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size < seekto.write_cmd_offset)
 			{
 				PDEBUG("aesd_ioctl: offset out of range");
 				retval = -EINVAL;
@@ -198,18 +199,22 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			else
 			{	
 				PDEBUG("aesd_ioctl: cmd received with offsets %u and %u", seekto.write_cmd, seekto.write_cmd_offset);
+				PDEBUG("aesd_ioctl: old file_pos %lld", filp->f_pos);
 				for (idx = 0; idx < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; idx++)
 				{
 					if (((idx + curr_buffer_out_position) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) == seekto.write_cmd)
 					{
 						newpos += seekto.write_cmd_offset;
+						break;
 					}
 					else
 					{
 						newpos += dev->buffer.entry[(curr_buffer_out_position + idx) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
+						PDEBUG("aesd_ioctl: newpos %lld at buffer position %d", newpos, idx + curr_buffer_out_position);
 					}
 				}
 				filp->f_pos = newpos;
+				PDEBUG("aesd_ioctl: new file_pos %lld and newpos %lld", filp->f_pos, newpos);
 			}
 		}
 	}

@@ -278,13 +278,14 @@ void *socket_thread(void *socket_param)
 					fwrite(socket->msg, sizeof(char), msg_len, fp);
 					syslog(LOG_DEBUG, "end of msg written to fp");
 					rewind(fp);
-					while ((bytes_read = fread(output_buffer, 1, MSG_BUFFER_SIZE, fp)) > 0)
-					{
-						send(socket->accepted_fd, output_buffer, bytes_read, 0);
-					}
+					
 					
 					msg_len = 0;
 					syslog(LOG_DEBUG, "msg send");
+				}
+				while ((bytes_read = fread(output_buffer, 1, MSG_BUFFER_SIZE, fp)) > 0)
+				{
+					send(socket->accepted_fd, output_buffer, bytes_read, 0);
 				}
 				fclose(fp);
 				pthread_mutex_unlock(socket->mutex);
