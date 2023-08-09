@@ -150,6 +150,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
     else
     {
+    	PDEBUG("partial write of %s", new_buf);
     	kfree(dev->partial_write);	    
 	dev->partial_write = new_buf;
 	dev->partial_len += retval;
