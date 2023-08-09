@@ -167,16 +167,20 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	mutex_lock_interruptible(&(dev->lock));
 	int curr_buffer_out_position = dev->buffer.out_offs;
 	int idx;
+	PDEBUG("aesd_ioctl: entering ioctl with cmd %u", cmd);
 	if (AESDCHAR_IOCSEEKTO == cmd)
 	{
+		PDEBUG("aesd_ioctl: cmd recognized");
 		struct aesd_seekto seekto;
 		if (copy_from_user(&seekto, (const void __user *) arg, sizeof(seekto)) != 0)
 		{
+			PDEBUG("aesd_ioctl: cmd invalid");
 			retval = -EFAULT;
 		}
 		else
 		{
-			if (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED <= seekto.write_cmd)
+			PDEBUG("aesd_ioctl: recognized offsets %u and %u", seekto.write_cmd, seekto.write_cmd_offset);
+			if (AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED >= seekto.write_cmd)
 			{	
 				PDEBUG("aesd_ioctl: cmd %d out of range, must be between 0 and 9 ", seekto.write_cmd);
 				retval = -EINVAL;
@@ -193,6 +197,7 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			}
 			else
 			{	
+				PDEBUG("aesd_ioctl: cmd received with offsets %u and %u", seekto.write_cmd, seekto.write_cmd_offset);
 				for (idx = 0; idx < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; idx++)
 				{
 					if (((idx + curr_buffer_out_position) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) == seekto.write_cmd)
