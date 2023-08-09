@@ -16,6 +16,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <sys/time.h>
+#include "aesd_ioctl.h"
 
 #define SOCKET_TARGET_PORT "9000"
 #define BACKLOG 20
@@ -220,6 +221,11 @@ void *socket_thread(void *socket_param)
 	int bytes_read;
 	bool is_receiving_message = true;
 	FILE *fp;
+	bool reading_first_cmd = false;
+	bool reading_second_cmd = false;
+	bool aesd_cmd_received = false;
+	unsigned int first_cmd = 0;
+	unsigned int second_cmd = 0;
 	
 	syslog(LOG_DEBUG, "aesdsocket in connection: variables assigned");
 	
@@ -250,8 +256,27 @@ void *socket_thread(void *socket_param)
 				{
 					socket->msg[msg_len] = msg_buffer[i];
 					++msg_len;
-					if (msg_buffer[i] == '\n')
+					if (strncmp(socket->msg, "AESDCHAR_IOCSEEKTO:", 19))
 					{
+						reading_first_cmd = true;
+						aesd_cmd_received = true;
+					}
+					else if (reading_first_cmd && (msg_buffer[i] == ','))
+					{
+						reading_first_cmd = false;
+						reading_second_cmd = true;
+					}
+					else if (reading_first_cmd)
+					{
+						first_cmd = first_cmd * 10 + (msg_buffer[i] - '0');
+					}
+					else if (reading_second_cmd)
+					{
+						second_cmd = second_cmd * 10 + (msg_buffer[i] - '0');
+					}
+					else if (msg_buffer[i] == '\n')
+					{
+
 						pthread_mutex_lock(socket->mutex);
 						fp = fopen(TMP_FILE, "a+");
 						fwrite(socket->msg, sizeof(char), msg_len, fp);
@@ -264,6 +289,13 @@ void *socket_thread(void *socket_param)
 						pthread_mutex_unlock(socket->mutex);
 						msg_len = 0;
 					}
+				}
+				if (aesd_cmd_received)
+				{
+					struct aesd_seekto seekto;
+					seekto.write_cmd = first_cmd;
+					seekto.write_cmd_offset = second_cmd;
+					ioctl(socket->accepted_fd, AESDCHAR_IOCSEEKTO, &seekto);
 				}
 			}
 		}
